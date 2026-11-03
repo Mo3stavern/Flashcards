@@ -32,17 +32,34 @@ HEADER_WORDS = {
     "front", "back", "note", "notes", "word", "words", "phrase", "translation",
     "meaning", "example", "context", "line", "lyric", "lyrics", "question",
     "answer", "original", "term", "definition",
+    "frontword", "wordtype", "type", "frontnote", "backnote",
     "vorderseite", "rückseite", "wort", "übersetzung", "bedeutung", "beispiel",
-    "notiz", "zeile",
+    "notiz", "zeile", "wortart",
     "слово", "перевод", "пример", "kelime", "çeviri", "anlam", "örnek",
+}
+
+COLUMNS = ["frontword", "wordtype", "frontnote", "back", "backnote"]
+
+# Header names that can be mapped to a column. Old decks use front/back/note.
+COLUMN_ALIASES = {
+    "frontword": "frontword", "front": "frontword", "word": "frontword",
+    "wordtype": "wordtype", "type": "wordtype", "wortart": "wordtype",
+    "frontnote": "frontnote",
+    "back": "back", "translation": "back",
+    "backnote": "backnote", "note": "backnote", "notes": "backnote",
 }
 
 
 @dataclass
 class Card:
-    front: str
-    back: str
-    note: str = ""
+    frontword: str
+    wordtype: str = ""
+    frontnote: str = ""
+    back: str = ""
+    backnote: str = ""
+
+    def values(self):
+        return [getattr(self, col) for col in COLUMNS]
 
 
 # ---------------------------------------------------------------------------
@@ -90,22 +107,50 @@ def _split_rows(text):
     return list(csv.reader(io.StringIO(body), delimiter=delimiter))
 
 
+def _header_key(cell):
+    return re.sub(r"[\s_\-]", "", cell.strip().lower().strip("*"))
+
+
 def _is_header(row):
-    words = [c.strip().lower().strip("*") for c in row[:2]]
+    words = [_header_key(c) for c in row[:2]]
     return bool(words) and all(w in HEADER_WORDS for w in words if w)
+
+
+def _header_mapping(header):
+    """Map column names to positions, or None if the header isn't fully understood."""
+    mapping = {}
+    for i, cell in enumerate(header):
+        key = _header_key(cell)
+        if not key:
+            continue
+        col = COLUMN_ALIASES.get(key)
+        if col is None or col in mapping:
+            return None
+        mapping[col] = i
+    if "frontword" not in mapping or "back" not in mapping:
+        return None
+    return mapping
 
 
 def rows_to_cards(rows):
     rows = [[_clean(c) for c in row] for row in rows]
     rows = [r for r in rows if any(r)]
+    mapping = None
     if rows and _is_header(rows[0]):
+        mapping = _header_mapping(rows[0])
         rows = rows[1:]
+    if mapping is None:
+        if max((len(r) for r in rows), default=0) <= 3:
+            # Old format without word type: front, back, note.
+            mapping = {"frontword": 0, "back": 1, "backnote": 2}
+        else:
+            mapping = {col: i for i, col in enumerate(COLUMNS)}
     cards = []
     for r in rows:
-        if len(r) < 2 or not r[0] or not r[1]:
+        fields = {col: r[i] if i < len(r) else "" for col, i in mapping.items()}
+        if not fields["frontword"] or not fields["back"]:
             continue
-        note = " · ".join(c for c in r[2:] if c)
-        cards.append(Card(r[0], r[1], note))
+        cards.append(Card(**fields))
     return cards
 
 
@@ -113,16 +158,17 @@ def parse_table(text):
     """Turn pasted/loaded table text into cards.
 
     Accepts tab-separated text (what you get when copying a table from Gemini,
-    Google Sheets or Excel), CSV with , or ; and Markdown tables. Column 1 is
-    the front, column 2 the back, any further columns become a note.
+    Google Sheets or Excel), CSV with , or ; and Markdown tables. The columns
+    are frontword, wordtype, frontnote, back, backnote. Tables with only two
+    or three columns are read the old way: front, back, note.
     """
     return rows_to_cards(_split_rows(text))
 
 
 def cards_to_tsv(cards):
-    lines = ["front\tback\tnote"]
+    lines = ["\t".join(COLUMNS)]
     for c in cards:
-        lines.append("\t".join(x.replace("\t", " ").replace("\n", " ") for x in (c.front, c.back, c.note)))
+        lines.append("\t".join(x.replace("\t", " ").replace("\n", " ") for x in c.values()))
     return "\n".join(lines)
 
 
@@ -204,9 +250,9 @@ def save_deck(name, cards):
     # utf-8-sig adds a BOM so Excel opens Cyrillic/Turkish text correctly.
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["front", "back", "note"])
+        w.writerow(COLUMNS)
         for c in cards:
-            w.writerow([c.front, c.back, c.note])
+            w.writerow(c.values())
     return path
 
 
@@ -243,12 +289,15 @@ Create up to {max_cards} flashcards from the song text below.
 
 Rules:
 - One card per useful word or short phrase, in the order they appear in the song. Skip names and duplicates.
-- Column "front": the word or phrase in {song_language}, spelled exactly as in the original script \
+- Column "frontword": the word or phrase in {song_language}, spelled exactly as in the original script \
 (keep Cyrillic letters and Turkish letters like ç ğ ı İ ö ş ü). If the song uses an inflected form, \
 write the dictionary form first and the song's form in brackets.
+- Column "wordtype": the word type in {target_language}, e.g. noun, verb, adjective, phrase.
+- Column "frontnote": the short lyric line where it appears, in {song_language}.
 - Column "back": the {target_language} translation.
-- Column "note": the short lyric line where it appears.
-- Answer with ONLY a Markdown table with exactly the header | front | back | note | and nothing else.
+- Column "backnote": the {target_language} translation of that lyric line.
+- Answer with ONLY a Markdown table with exactly the header \
+| frontword | wordtype | frontnote | back | backnote | and nothing else.
 
 Song text:
 \"\"\"
