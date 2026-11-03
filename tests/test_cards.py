@@ -63,6 +63,37 @@ Let me know if you want more!"""
         self.assertEqual(core.parse_table(core.cards_to_tsv(deck)), deck)
 
 
+class MergeTests(unittest.TestCase):
+    def test_identical_frontword_is_skipped(self):
+        deck = [core.Card("звезда", back="star"), core.Card("şarkı", back="song")]
+        new = [
+            core.Card("звезда", "noun", back="a star"),
+            core.Card(" şarkı ", back="song"),
+            core.Card("небо", back="sky"),
+        ]
+        added, skipped = core.merge_cards(deck, new)
+        self.assertEqual([c.frontword for c in added], ["небо"])
+        self.assertEqual([c.frontword for c in skipped], ["звезда", " şarkı "])
+
+    def test_sentences_containing_known_words_are_added(self):
+        deck = [core.Card("звезда", back="star")]
+        new = [core.Card("Звезда по имени Солнце", back="A star called the Sun"),
+               core.Card("звезды", back="stars"), core.Card("Звезда", back="Star")]
+        added, skipped = core.merge_cards(deck, new)
+        self.assertEqual(added, new)
+        self.assertEqual(skipped, [])
+
+    def test_duplicates_within_new_table(self):
+        added, skipped = core.merge_cards([], [core.Card("gül", back="rose"), core.Card("gül", back="laugh!")])
+        self.assertEqual([c.back for c in added], ["rose"])
+        self.assertEqual([c.back for c in skipped], ["laugh!"])
+
+    def test_same_letters_typed_differently(self):
+        composed, decomposed = "й", "и\u0306"
+        added, skipped = core.merge_cards([core.Card(composed, back="y")], [core.Card(decomposed, back="y")])
+        self.assertEqual((added, len(skipped)), ([], 1))
+
+
 class FileTests(unittest.TestCase):
     def test_save_and_load_roundtrip(self):
         deck = [core.Card("ёлка", "noun", "line, with comma", "fir tree", "back note"), core.Card("çiçek", back="flower")]

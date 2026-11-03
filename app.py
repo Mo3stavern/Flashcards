@@ -7,7 +7,6 @@ import os
 import random
 import subprocess
 import sys
-import threading
 import zipfile
 import tkinter as tk
 from pathlib import Path
@@ -22,8 +21,7 @@ WORD_TYPE = (FONT[0], 22)
 MEDIUM = (FONT[0], 20)
 SMALL = (FONT[0], 11, "italic")
 
-SONG_LANGUAGES = ["Russian", "Turkish", "Ukrainian", "Bulgarian", "Serbian", "Kazakh", "Azerbaijani"]
-TARGET_LANGUAGES = ["English", "German", "Turkish", "Russian"]
+TABLE_FILETYPES = [("Tables", "*.csv *.tsv *.txt *.md *.xlsx"), ("All files", "*.*")]
 
 
 def open_folder(path):
@@ -66,12 +64,14 @@ class TableDialog(tk.Toplevel):
         bottom = ttk.Frame(self, padding=10)
         bottom.pack(side="bottom", fill="x")
         ttk.Button(bottom, text="Paste from clipboard", command=self._paste).pack(side="left")
+        if editing:
+            ttk.Button(bottom, text="Add cards from file…", command=self._add_from_file).pack(side="left", padx=6)
         ttk.Button(bottom, text="Cancel", command=self.destroy).pack(side="right")
         ttk.Button(bottom, text="Save deck", command=self._save).pack(side="right", padx=6)
 
         ttk.Label(
             self, padding=(10, 0), wraplength=860,
-            text="Paste the table from Gemini (or Excel / Google Sheets) below. "
+            text="Paste a table (from Excel, Google Sheets or an AI chat) below. "
                  "Columns: frontword, wordtype, frontnote, back, backnote "
                  "(only frontword and back are required).",
         ).pack(anchor="w")
@@ -101,6 +101,30 @@ class TableDialog(tk.Toplevel):
             return
         self.txt.delete("1.0", "end")
         self.txt.insert("1.0", clip)
+
+    def _add_from_file(self):
+        filename = filedialog.askopenfilename(parent=self, title="Add cards from table", filetypes=TABLE_FILETYPES)
+        if not filename:
+            return
+        try:
+            new = core.load_file(filename)
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile) as e:
+            messagebox.showerror("Can't read file", str(e), parent=self)
+            return
+        added, skipped = core.merge_cards(self.cards, new)
+        if added:
+            self.txt.delete("1.0", "end")
+            self.txt.insert("1.0", core.cards_to_tsv(self.cards + added))
+            self._refresh()
+            self.tree.see(self.tree.get_children()[-1])
+        msg = f"{len(added)} new cards added from {Path(filename).name}."
+        if skipped:
+            words = ", ".join(c.frontword for c in skipped[:20])
+            more = f" and {len(skipped) - 20} more" if len(skipped) > 20 else ""
+            msg += f"\n\n{len(skipped)} skipped because the word is already in the deck:\n{words}{more}"
+        if added:
+            msg += "\n\nClick 'Save deck' to keep the changes."
+        messagebox.showinfo("Add cards", msg, parent=self)
 
     def _on_change(self, _event=None):
         if self.txt.edit_modified():
@@ -132,126 +156,6 @@ class TableDialog(tk.Toplevel):
             core.deck_path(self.editing).unlink(missing_ok=True)
         self.app.refresh_decks(select=path.stem)
         self.destroy()
-
-
-class SongDialog(tk.Toplevel):
-    """Paste song lyrics and let Gemini (or any AI chat) turn them into a table."""
-
-    def __init__(self, app):
-        super().__init__(app.root)
-        self.app = app
-        self.title("New deck from a song")
-        self.geometry("760x640")
-        cfg = app.config
-
-        form = ttk.Frame(self, padding=10)
-        form.pack(fill="x")
-        ttk.Label(form, text="Deck name:").grid(row=0, column=0, sticky="w")
-        self.name = tk.StringVar()
-        ttk.Entry(form, textvariable=self.name, width=40, font=FONT).grid(row=0, column=1, columnspan=3, sticky="w", pady=3)
-        ttk.Label(form, text="Song language:").grid(row=1, column=0, sticky="w")
-        self.song_lang = tk.StringVar(value=cfg["song_language"])
-        ttk.Combobox(form, textvariable=self.song_lang, values=SONG_LANGUAGES, width=16).grid(row=1, column=1, sticky="w", pady=3)
-        ttk.Label(form, text="Translate to:").grid(row=1, column=2, sticky="w", padx=(12, 0))
-        self.target_lang = tk.StringVar(value=cfg["target_language"])
-        ttk.Combobox(form, textvariable=self.target_lang, values=TARGET_LANGUAGES, width=16).grid(row=1, column=3, sticky="w")
-        ttk.Label(form, text="Max cards:").grid(row=2, column=0, sticky="w")
-        self.max_cards = tk.IntVar(value=cfg["max_cards"])
-        ttk.Spinbox(form, from_=5, to=200, textvariable=self.max_cards, width=6).grid(row=2, column=1, sticky="w", pady=3)
-
-        ttk.Label(self, text="Song text:", padding=(10, 0)).pack(anchor="w")
-        frame, self.txt = text_widget(self, 16)
-        frame.pack(fill="both", expand=True, padx=10, pady=6)
-        self.txt.focus_set()
-
-        self.status = ttk.Label(self, padding=(10, 0), foreground="#555")
-        self.status.pack(anchor="w")
-
-        bottom = ttk.Frame(self, padding=10)
-        bottom.pack(fill="x")
-        self.api_btn = ttk.Button(bottom, text="Create cards with Gemini API", command=self._generate)
-        self.api_btn.pack(side="left")
-        ttk.Button(bottom, text="Copy prompt (for gemini.google.com / any AI)", command=self._copy_prompt).pack(side="left", padx=6)
-        ttk.Button(bottom, text="Close", command=self.destroy).pack(side="right")
-
-    def _prompt(self):
-        lyrics = self.txt.get("1.0", "end").strip()
-        if not lyrics:
-            messagebox.showwarning("Song text", "Please paste the song text first.", parent=self)
-            return None
-        cfg = self.app.config
-        cfg["song_language"] = self.song_lang.get()
-        cfg["target_language"] = self.target_lang.get()
-        try:
-            cfg["max_cards"] = int(self.max_cards.get())
-        except (tk.TclError, ValueError):
-            pass
-        core.save_config(cfg)
-        return core.build_prompt(lyrics, cfg["song_language"], cfg["target_language"], cfg["max_cards"])
-
-    def _copy_prompt(self):
-        prompt = self._prompt()
-        if not prompt:
-            return
-        self.clipboard_clear()
-        self.clipboard_append(prompt)
-        self.update()
-        messagebox.showinfo(
-            "Prompt copied",
-            "The prompt is in your clipboard.\n\n"
-            "1. Paste it into Gemini (gemini.google.com) or any other AI chat.\n"
-            "2. Copy the table it answers with.\n"
-            "3. Paste it into the window that opens next.",
-            parent=self,
-        )
-        name = self.name.get().strip()
-        self.destroy()
-        TableDialog(self.app, name=name)
-
-    def _generate(self):
-        prompt = self._prompt()
-        if not prompt:
-            return
-        if not self.app.config["gemini_api_key"]:
-            if messagebox.askyesno(
-                "No API key",
-                "No Gemini API key is set yet.\n\nYou can get a free one at aistudio.google.com/apikey.\n"
-                "Open Settings now?\n\n(Or use 'Copy prompt' to work with the Gemini website instead.)",
-                parent=self,
-            ):
-                SettingsDialog(self.app)
-            return
-
-        self.api_btn.state(["disabled"])
-        self.status.configure(text="Asking Gemini... this can take up to a minute.")
-        result = {}
-        cfg = self.app.config
-
-        def work():
-            try:
-                result["text"] = core.ask_gemini(prompt, cfg["gemini_api_key"], cfg["gemini_model"])
-            except core.GeminiError as e:
-                result["error"] = str(e)
-
-        thread = threading.Thread(target=work, daemon=True)
-        thread.start()
-
-        def poll():
-            if thread.is_alive():
-                self.after(200, poll)
-                return
-            if not self.winfo_exists():
-                return
-            self.api_btn.state(["!disabled"])
-            self.status.configure(text="")
-            if "error" in result:
-                messagebox.showerror("Gemini", result["error"], parent=self)
-                return
-            name = self.name.get().strip()
-            self.destroy()
-            TableDialog(self.app, text=result["text"], name=name, title="Check the cards and save")
-
-        self.after(200, poll)
 
 
 class SettingsDialog(tk.Toplevel):
@@ -440,7 +344,6 @@ class App:
         for text, cmd in (
             ("▶  Study", self._study_selected),
             (None, None),
-            ("♪  New deck from song (AI)…", lambda: SongDialog(self)),
             ("Paste table…", lambda: TableDialog(self)),
             ("Import table file…", self._import_file),
             (None, None),
@@ -517,13 +420,7 @@ class App:
             self.refresh_decks()
 
     def _import_file(self):
-        filename = filedialog.askopenfilename(
-            title="Import table",
-            filetypes=[
-                ("Tables", "*.csv *.tsv *.txt *.md *.xlsx"),
-                ("All files", "*.*"),
-            ],
-        )
+        filename = filedialog.askopenfilename(title="Import table", filetypes=TABLE_FILETYPES)
         if not filename:
             return
         try:

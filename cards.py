@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 import zipfile
@@ -163,6 +164,29 @@ def parse_table(text):
     or three columns are read the old way: front, back, note.
     """
     return rows_to_cards(_split_rows(text))
+
+
+def _word_key(word):
+    # NFC so that "й" typed as one character and as и + combining breve count as the same word.
+    return unicodedata.normalize("NFC", word.strip())
+
+
+def merge_cards(existing, new):
+    """Add new cards to a deck, skipping any whose frontword is already there.
+
+    Only an identical frontword counts as a duplicate, so a phrase or sentence
+    that merely contains a known word is still added. Returns (added, skipped).
+    """
+    seen = {_word_key(c.frontword) for c in existing}
+    added, skipped = [], []
+    for c in new:
+        key = _word_key(c.frontword)
+        if key in seen:
+            skipped.append(c)
+        else:
+            seen.add(key)
+            added.append(c)
+    return added, skipped
 
 
 def cards_to_tsv(cards):

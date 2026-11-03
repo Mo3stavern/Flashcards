@@ -1,6 +1,6 @@
 # Flashcards
 
-A very simple flashcards desktop app (Windows, macOS, Linux). You paste in a song text, an AI (Google Gemini or any other chatbot) turns it into a table of vocabulary, and the app turns that table into flashcards. Cyrillic and Turkish letters (ç ğ ı İ ö ş ü, ё, й …) work everywhere: in the text fields, in files, in deck names.
+A very simple flashcards desktop app (Windows, macOS, Linux). You bring a vocabulary table (CSV, Excel, or pasted from a spreadsheet or AI chat) and the app turns it into flashcards. Cyrillic and Turkish letters (ç ğ ı İ ö ş ü, ё, й …) work everywhere: in the text fields, in files, in deck names.
 
 ## Start the app
 
@@ -15,28 +15,17 @@ On Windows you can also double-click `app.py`. No other packages are needed.
 
 Your decks are saved as normal UTF-8 CSV files in `Flashcards/decks` in your home folder. "Open decks folder" in the app takes you there. You can open the files in Excel, and any `.csv` file you drop into that folder shows up as a deck.
 
-## Getting cards from Gemini
+## Making decks
 
-Click **New deck from song (AI)…**, paste the song text, pick the song language (for example Russian or Turkish) and the language you want translations in. Then choose one of these two options.
+Click **Import table file…** (`.csv`, `.tsv`, `.txt`, `.md`, `.xlsx`) or **Paste table…**, check the preview and click **Save deck**.
 
-### Option A: Gemini website or any other AI (no setup)
+### Adding more cards to a deck
 
-1. Click **Copy prompt**. A ready-made prompt that includes your song text is now in your clipboard.
-2. Paste it into [gemini.google.com](https://gemini.google.com), ChatGPT, Claude, or another chatbot.
-3. Copy the table from the answer and paste it into the window the app opened. A live preview shows which cards were found.
-4. Click **Save deck**.
+Select the deck, click **Edit deck…**, then **Add cards from file…** and pick a CSV or Excel table. Its cards are added to the end of the deck. Click **Save deck** to keep them.
 
-### Option B: Gemini API (one click)
-
-1. Get a free API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-2. Enter it in **Settings…** (or set the `GEMINI_API_KEY` environment variable).
-3. Click **Create cards with Gemini API**. The cards come back in the preview window, where you check them and click **Save deck**.
-
-You can change the model in Settings. The default is `gemini-2.5-flash`.
+Cards whose `frontword` is already in the deck are skipped, and the app tells you which ones. Only an identical `frontword` counts as a duplicate. A sentence or phrase that contains a word you already have is still added. Upper and lower case count as different, so `Şarkı` and `şarkı` are two separate words.
 
 ## Table format
-
-You can also bring a table you made yourself: click **Import table file…** (`.csv`, `.tsv`, `.txt`, `.md`, `.xlsx`) or **Paste table…**.
 
 | frontword | wordtype | frontnote              | back | backnote              |
 |-----------|----------|------------------------|------|-----------------------|
