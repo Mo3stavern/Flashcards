@@ -38,13 +38,16 @@ You can change the model in Settings. The default is `gemini-2.5-flash`.
 
 You can also bring a table you made yourself: click **Import table file…** (`.csv`, `.tsv`, `.txt`, `.md`, `.xlsx`) or **Paste table…**.
 
-| front  | back  | note                    |
-|--------|-------|-------------------------|
-| звезда | star  | Звезда по имени Солнце  |
-| şarkı  | song  | Bu şarkı senin için     |
+| frontword | wordtype | frontnote              | back | backnote              |
+|-----------|----------|------------------------|------|-----------------------|
+| звезда    | noun     | Звезда по имени Солнце | star | A star called the Sun |
+| şarkı     | noun     | Bu şarkı senin için    | song | This song is for you  |
 
-- Column 1 is the front of the card and column 2 is the back. Column 3 (optional) is shown under the answer, which works well for the line of the song the word came from.
-- A header row like `front | back | note` is optional and gets skipped automatically.
+- `frontword` is shown in bold black on the front of the card, with `wordtype` next to it in orange. `frontnote` is shown under them, which works well for the line of the song the word came from.
+- `back` is the answer, and `backnote` is shown under it (for example, the translation of the song line).
+- Only `frontword` and `back` are required. The other columns can be left empty.
+- A header row like `frontword | wordtype | frontnote | back | backnote` is optional. If it is there, the columns can be in any order.
+- Older tables with just `front | back | note` still work: column 1 becomes the front word, column 2 the back and column 3 the back note.
 - The app accepts tab-separated text (what you get when you copy a table out of Gemini, Google Sheets or Excel), CSV with `,` or `;`, Markdown tables, and Excel `.xlsx` files.
 - Text files must be UTF-8 so that Cyrillic and Turkish come through correctly. In Excel, use "CSV UTF-8". In Google Sheets, use File, then Download, then CSV.
 

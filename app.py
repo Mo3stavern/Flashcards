@@ -17,6 +17,8 @@ import cards as core
 
 FONT = ("Segoe UI", 11) if sys.platform == "win32" else ("Helvetica", 12)
 BIG = (FONT[0], 30, "bold")
+FRONT_WORD = (FONT[0], 22, "bold")
+WORD_TYPE = (FONT[0], 22)
 MEDIUM = (FONT[0], 20)
 SMALL = (FONT[0], 11, "italic")
 
@@ -70,7 +72,8 @@ class TableDialog(tk.Toplevel):
         ttk.Label(
             self, padding=(10, 0), wraplength=860,
             text="Paste the table from Gemini (or Excel / Google Sheets) below. "
-                 "Column 1 = front, column 2 = back, column 3 = note (optional).",
+                 "Columns: frontword, wordtype, frontnote, back, backnote "
+                 "(only frontword and back are required).",
         ).pack(anchor="w")
 
         frame, self.txt = text_widget(self, 10)
@@ -81,9 +84,9 @@ class TableDialog(tk.Toplevel):
         self.count = ttk.Label(self, padding=(10, 0))
         self.count.pack(anchor="w")
 
-        self.tree = ttk.Treeview(self, columns=("front", "back", "note"), show="headings", height=10)
-        for col, w in (("front", 250), ("back", 250), ("note", 350)):
-            self.tree.heading(col, text=col.capitalize())
+        self.tree = ttk.Treeview(self, columns=core.COLUMNS, show="headings", height=10)
+        for col, w in zip(core.COLUMNS, (160, 100, 220, 160, 220)):
+            self.tree.heading(col, text=col)
             self.tree.column(col, width=w)
         self.tree.pack(fill="both", expand=True, padx=10, pady=6)
 
@@ -108,7 +111,7 @@ class TableDialog(tk.Toplevel):
         self.cards = core.parse_table(self.txt.get("1.0", "end"))
         self.tree.delete(*self.tree.get_children())
         for c in self.cards:
-            self.tree.insert("", "end", values=(c.front, c.back, c.note))
+            self.tree.insert("", "end", values=c.values())
         self.count.configure(text=f"{len(self.cards)} cards detected")
 
     def _save(self):
@@ -305,13 +308,30 @@ class StudyView(ttk.Frame):
 
         self.card = tk.Frame(self, bg="white", highlightbackground="#ccc", highlightthickness=1)
         self.card.pack(fill="both", expand=True, pady=16)
-        self.front = tk.Label(self.card, font=BIG, bg="white", wraplength=760)
-        self.front.pack(expand=True, pady=(40, 0))
-        self.back = tk.Label(self.card, font=MEDIUM, bg="white", fg="#1a5fb4", wraplength=760)
-        self.back.pack(expand=True)
-        self.note = tk.Label(self.card, font=SMALL, bg="white", fg="#666", wraplength=760)
-        self.note.pack(expand=True, pady=(0, 30))
-        for w in (self.card, self.front, self.back, self.note):
+
+        self.front_panel = tk.Frame(self.card, bg="white")
+        word_row = tk.Frame(self.front_panel, bg="white")
+        word_row.pack()
+        self.frontword = tk.Label(word_row, font=FRONT_WORD, bg="white", fg="black", wraplength=560)
+        self.frontword.pack(side="left")
+        self.wordtype = tk.Label(word_row, font=WORD_TYPE, bg="white", fg="#e66100", wraplength=200)
+        self.wordtype.pack(side="left", padx=(12, 0))
+        self.frontnote = tk.Label(self.front_panel, font=SMALL, bg="white", fg="#666", wraplength=760)
+        self.frontnote.pack(pady=(6, 0))
+
+        self.back_panel = tk.Frame(self.card, bg="white")
+        self.back = tk.Label(self.back_panel, font=MEDIUM, bg="white", fg="#1a5fb4", wraplength=760)
+        self.back.pack()
+        self.backnote = tk.Label(self.back_panel, font=SMALL, bg="white", fg="#666", wraplength=760)
+        self.backnote.pack(pady=(6, 0))
+
+        question, answer = (self.back_panel, self.front_panel) if reverse else (self.front_panel, self.back_panel)
+        question.pack(expand=True, pady=(40, 0))
+        answer.pack(expand=True, pady=(0, 30))
+        self.done = tk.Label(self.card, font=BIG, bg="white", wraplength=760)
+
+        for w in (self.card, word_row, self.front_panel, self.back_panel, self.frontword, self.wordtype,
+                  self.frontnote, self.back, self.backnote):
             w.bind("<Button-1>", lambda e: self.flip())
 
         self.buttons = ttk.Frame(self)
@@ -331,24 +351,34 @@ class StudyView(ttk.Frame):
         for key in ("<space>", "<Return>", "1", "2"):
             self.app.root.unbind(key)
 
-    def _sides(self, c):
-        return (c.back, c.front) if self.reverse else (c.front, c.back)
+    def _show_front(self, c):
+        self.frontword.configure(text=c.frontword if c else "")
+        self.wordtype.configure(text=c.wordtype if c else "")
+        self.frontnote.configure(text=c.frontnote if c else "")
+
+    def _show_back(self, c):
+        self.back.configure(text=c.back if c else "")
+        self.backnote.configure(text=c.backnote if c else "")
 
     def show_card(self):
         for b in (self.show_btn, self.again_btn, self.good_btn, self.restart_btn):
             b.pack_forget()
         self.progress.configure(text=f"Learned {self.known} / {self.total}   ·   {len(self.queue)} left")
         if not self.queue:
-            self.front.configure(text="Done!")
-            self.back.configure(text=f"You went through all {self.total} cards.")
-            self.note.configure(text="")
+            self.front_panel.pack_forget()
+            self.back_panel.pack_forget()
+            self.done.configure(text=f"Done!\n\nYou went through all {self.total} cards.")
+            self.done.pack(expand=True)
             self.restart_btn.pack()
             return
         self.flipped = False
-        q, _ = self._sides(self.queue[0])
-        self.front.configure(text=q)
-        self.back.configure(text="")
-        self.note.configure(text="")
+        c = self.queue[0]
+        if self.reverse:
+            self._show_back(c)
+            self._show_front(None)
+        else:
+            self._show_front(c)
+            self._show_back(None)
         self.show_btn.pack()
 
     def flip(self):
@@ -356,8 +386,8 @@ class StudyView(ttk.Frame):
             return
         self.flipped = True
         c = self.queue[0]
-        self.back.configure(text=self._sides(c)[1])
-        self.note.configure(text=c.note)
+        self._show_front(c)
+        self._show_back(c)
         self.show_btn.pack_forget()
         self.again_btn.pack(side="left", padx=8)
         self.good_btn.pack(side="left", padx=8)

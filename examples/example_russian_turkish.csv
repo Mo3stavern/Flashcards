@@ -1,7 +1,7 @@
-front,back,note
-звезда,star,Звезда по имени Солнце
-небо,sky,И небо в алмазах
-сердце,heart,Сердце моё
-şarkı,song,Bu şarkı senin için
-gönül,heart / soul,Gönül dağı
-ağlamak (ağlıyorum),to cry (I am crying),Ağlıyorum sensiz
+frontword,wordtype,frontnote,back,backnote
+звезда,noun,Звезда по имени Солнце,star,A star called the Sun
+небо,noun,И небо в алмазах,sky,And the sky in diamonds
+сердце,noun,Сердце моё,heart,My heart
+şarkı,noun,Bu şarkı senin için,song,This song is for you
+gönül,noun,Gönül dağı,heart / soul,The mountain of the heart
+ağlamak (ağlıyorum),verb,Ağlıyorum sensiz,to cry (I am crying),I am crying without you
